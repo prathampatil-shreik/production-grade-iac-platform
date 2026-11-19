@@ -36,7 +36,6 @@ permissions:
 
 env:
   TF_VERSION: "1.10.0"
-  AWS_REGION: ${{ secrets.AWS_REGION }}
 
 jobs:
   # ── Job 1: Apply dev ─────────────────────────────────────────────────────────
@@ -55,7 +54,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_CD_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION }}
           role-session-name: cd-apply-dev-${{ github.run_id }}
 
       - name: Setup Terraform
@@ -97,7 +96,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_CD_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION }}
           role-session-name: cd-apply-prod-${{ github.run_id }}
 
       - name: Setup Terraform

@@ -37,7 +37,6 @@ permissions:
 
 env:
   TF_VERSION: "1.10.0"
-  AWS_REGION: ${{ secrets.AWS_REGION }}
 
 jobs:
   # ── Job 1: Terraform quality checks ────────────────────────────────────────
@@ -167,7 +166,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_CI_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION }}
           role-session-name: ci-plan-dev-${{ github.run_id }}
 
       - name: Setup Terraform
@@ -223,7 +222,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_CI_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION }}
           role-session-name: ci-plan-prod-${{ github.run_id }}
 
       - name: Setup Terraform
