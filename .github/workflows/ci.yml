@@ -152,7 +152,6 @@ jobs:
     name: Plan dev
     runs-on: ubuntu-latest
     needs: [quality, security]
-    environment: dev
 
     permissions:
       id-token: write
@@ -208,7 +207,6 @@ jobs:
     name: Plan prod
     runs-on: ubuntu-latest
     needs: [quality, security]
-    environment: prod
 
     permissions:
       id-token: write
