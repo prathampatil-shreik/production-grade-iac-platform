@@ -16,7 +16,7 @@ $ErrorActionPreference = "Stop"
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $PolicyDir = Join-Path $RepoRoot "policy\terraform"
-$TestdataDir = Join-Path $PolicyDir "testdata"
+$TestdataDir = Join-Path $RepoRoot "policy\testdata"
 
 $Failures = @()
 
