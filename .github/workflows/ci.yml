@@ -30,6 +30,7 @@ on:
       - "policy/**"
       - ".checkov.yaml"
       - ".tflint.hcl"
+      - ".github/workflows/**"
 
 permissions:
   contents: read

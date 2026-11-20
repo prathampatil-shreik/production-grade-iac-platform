@@ -30,6 +30,7 @@ on:
     paths:
       - "modules/**"
       - "envs/**"
+      - ".github/workflows/**"
 
 permissions:
   contents: read
