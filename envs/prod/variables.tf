@@ -135,25 +135,25 @@ variable "db_max_allocated_storage" {
 variable "db_backup_retention_period" {
   description = "RDS backup retention in days"
   type        = number
-  default     = 14
+  default     = 0
 }
 
 variable "db_multi_az" {
   description = "Enable RDS Multi-AZ deployment"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "db_deletion_protection" {
   description = "Enable RDS deletion protection"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "db_skip_final_snapshot" {
   description = "Skip final RDS snapshot on destroy"
   type        = bool
-  default     = false
+  default     = true
 }
 
 # ── Storage ───────────────────────────────────────────────────────────────────
