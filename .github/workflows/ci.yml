@@ -3,7 +3,7 @@
 # Stage 4 — CI pipeline (pull request gate)
 #
 # Triggered on every pull request targeting main.
-# Uses OIDC to assume the CI IAM role — no long-lived AWS credentials stored.
+# Uses static AWS credentials stored as GitHub secrets.
 #
 # Jobs:
 #   quality    — terraform fmt, validate, tflint
@@ -12,11 +12,12 @@
 #   plan-prod  — terraform plan for envs/prod (read-only, no apply)
 #
 # Required GitHub secrets:
-#   AWS_CI_ROLE_ARN   — ARN of the CI IAM role (output of bootstrap/oidc)
-#   AWS_REGION        — e.g. us-east-1
-#   TF_VAR_DB_PASSWORD — database password (used for plan only, never applied)
-#   DEV_BUCKET_SUFFIX  — unique suffix for the dev S3 bucket name
-#   PROD_BUCKET_SUFFIX — unique suffix for the prod S3 bucket name
+#   AWS_ACCESS_KEY_ID     — IAM user access key
+#   AWS_SECRET_ACCESS_KEY — IAM user secret key
+#   AWS_REGION            — e.g. us-east-1
+#   TF_VAR_DB_PASSWORD    — database password (used for plan only, never applied)
+#   DEV_BUCKET_SUFFIX     — unique suffix for the dev S3 bucket name
+#   PROD_BUCKET_SUFFIX    — unique suffix for the prod S3 bucket name
 
 name: CI
 
@@ -31,9 +32,8 @@ on:
       - ".tflint.hcl"
 
 permissions:
-  id-token: write   # required for OIDC token request
   contents: read
-  pull-requests: write  # allows posting plan output as PR comment
+  pull-requests: write
 
 env:
   TF_VERSION: "1.10.0"
@@ -154,19 +154,18 @@ jobs:
     needs: [quality, security]
 
     permissions:
-      id-token: write
       contents: read
       pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_CI_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-          role-session-name: ci-plan-dev-${{ github.run_id }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -209,19 +208,18 @@ jobs:
     needs: [quality, security]
 
     permissions:
-      id-token: write
       contents: read
       pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_CI_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-          role-session-name: ci-plan-prod-${{ github.run_id }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
