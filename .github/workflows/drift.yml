@@ -1,12 +1,12 @@
 # .github/workflows/drift.yml
 #
-# Stage 4 — Drift detection (scheduled)
+# Stage 5 — Drift detection (scheduled + manual)
 #
-# Runs daily at 06:00 UTC. Executes terraform plan for both environments.
-# If the plan shows any changes (exit code 2), it means real infrastructure
-# has drifted from the Terraform state and an issue is opened automatically.
+# Runs daily at 06:00 UTC. Executes terraform plan -detailed-exitcode for
+# both environments. If exit code 2 is returned (changes present), drift has
+# occurred and a GitHub issue is opened automatically with the plan diff.
 #
-# Exit codes from terraform plan:
+# Exit codes from terraform plan -detailed-exitcode:
 #   0 — no changes (no drift)
 #   1 — error
 #   2 — changes present (drift detected)
@@ -18,16 +18,13 @@
 #   TF_VAR_DB_PASSWORD
 #   DEV_BUCKET_SUFFIX
 #   PROD_BUCKET_SUFFIX
-#
-# Required GitHub permission:
-#   issues: write      — to open drift issues
 
 name: Drift Detection
 
 on:
   schedule:
     - cron: "0 6 * * *"   # 06:00 UTC daily
-  workflow_dispatch:        # allow manual trigger
+  workflow_dispatch:        # allow manual trigger for evidence/testing
 
 permissions:
   contents: read
@@ -44,6 +41,7 @@ jobs:
     environment: dev
     outputs:
       drift_detected: ${{ steps.plan.outputs.drift_detected }}
+      plan_summary: ${{ steps.plan.outputs.plan_summary }}
 
     steps:
       - uses: actions/checkout@v4
@@ -70,11 +68,25 @@ jobs:
         env:
           TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
           TF_VAR_bucket_suffix: ${{ secrets.DEV_BUCKET_SUFFIX }}
+          TF_VAR_db_backup_retention_period: "0"
+          TF_VAR_db_multi_az: "false"
+          TF_VAR_db_deletion_protection: "false"
+          TF_VAR_db_skip_final_snapshot: "true"
+          TF_VAR_db_instance_class: "db.t3.micro"
+          TF_VAR_db_allocated_storage: "20"
+          TF_VAR_db_max_allocated_storage: "50"
         run: |
           set +e
           terraform plan -input=false -no-color -detailed-exitcode 2>&1 | tee plan_output.txt
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
+
+          # Capture last 100 lines of plan as summary for issue body
+          SUMMARY=$(tail -100 plan_output.txt)
+          echo "plan_summary<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$SUMMARY" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
           if [ "$EXIT_CODE" -eq 2 ]; then
             echo "drift_detected=true" >> "$GITHUB_OUTPUT"
             echo "DRIFT DETECTED in dev environment"
@@ -83,7 +95,6 @@ jobs:
             echo "No drift in dev environment"
           else
             echo "drift_detected=error" >> "$GITHUB_OUTPUT"
-            echo "Plan failed with exit code $EXIT_CODE"
             exit 1
           fi
 
@@ -102,6 +113,7 @@ jobs:
     environment: prod
     outputs:
       drift_detected: ${{ steps.plan.outputs.drift_detected }}
+      plan_summary: ${{ steps.plan.outputs.plan_summary }}
 
     steps:
       - uses: actions/checkout@v4
@@ -128,11 +140,24 @@ jobs:
         env:
           TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
           TF_VAR_bucket_suffix: ${{ secrets.PROD_BUCKET_SUFFIX }}
+          TF_VAR_db_backup_retention_period: "0"
+          TF_VAR_db_multi_az: "false"
+          TF_VAR_db_deletion_protection: "false"
+          TF_VAR_db_skip_final_snapshot: "true"
+          TF_VAR_db_instance_class: "db.t3.micro"
+          TF_VAR_db_allocated_storage: "20"
+          TF_VAR_db_max_allocated_storage: "50"
         run: |
           set +e
           terraform plan -input=false -no-color -detailed-exitcode 2>&1 | tee plan_output.txt
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
+
+          SUMMARY=$(tail -100 plan_output.txt)
+          echo "plan_summary<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$SUMMARY" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
           if [ "$EXIT_CODE" -eq 2 ]; then
             echo "drift_detected=true" >> "$GITHUB_OUTPUT"
             echo "DRIFT DETECTED in prod environment"
@@ -141,7 +166,6 @@ jobs:
             echo "No drift in prod environment"
           else
             echo "drift_detected=error" >> "$GITHUB_OUTPUT"
-            echo "Plan failed with exit code $EXIT_CODE"
             exit 1
           fi
 
@@ -163,7 +187,7 @@ jobs:
       needs.drift-prod.outputs.drift_detected == 'true'
 
     steps:
-      - name: Open drift issue
+      - name: Open or update drift issue
         uses: actions/github-script@v7
         with:
           script: |
@@ -171,17 +195,27 @@ jobs:
             const prodDrift = '${{ needs.drift-prod.outputs.drift_detected }}' === 'true';
             const envs = [devDrift && 'dev', prodDrift && 'prod'].filter(Boolean).join(', ');
 
+            const devSummary  = `${{ needs.drift-dev.outputs.plan_summary }}`;
+            const prodSummary = `${{ needs.drift-prod.outputs.plan_summary }}`;
+
+            const planSection = [
+              devDrift  ? `### dev plan diff\n\`\`\`\n${devSummary}\n\`\`\`` : '',
+              prodDrift ? `### prod plan diff\n\`\`\`\n${prodSummary}\n\`\`\`` : '',
+            ].filter(Boolean).join('\n\n');
+
             const title = `[Drift] Infrastructure drift detected in: ${envs}`;
             const body = [
               '## Infrastructure Drift Detected',
               '',
               `Terraform plan found differences between state and real infrastructure in: **${envs}**`,
               '',
-              '### Next steps',
-              '1. Download the plan artifact from this workflow run to see what changed.',
-              '2. If the change is intentional, update the Terraform code and merge a PR.',
-              '3. If the change is unintentional, investigate who made the out-of-band change.',
-              '4. Run `terraform apply` via the CD pipeline to reconcile state.',
+              planSection,
+              '',
+              '### How to fix',
+              '1. Review the plan diff above to understand what changed out-of-band.',
+              '2. If the change is **unintentional**: revert it in AWS Console, then re-run this workflow to confirm no drift.',
+              '3. If the change is **intentional**: update the Terraform code to match, open a PR, and merge to reconcile via CD.',
+              '4. Once fixed, close this issue.',
               '',
               `Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`,
             ].join('\n');
@@ -201,12 +235,14 @@ jobs:
                 issue_number: existing.number,
                 body: `New drift detected on ${new Date().toISOString()}.\n\n${body}`,
               });
+              console.log(`Updated existing drift issue #${existing.number}`);
             } else {
-              await github.rest.issues.create({
+              const { data: issue } = await github.rest.issues.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 title,
                 body,
                 labels: ['drift', 'infrastructure'],
               });
+              console.log(`Created drift issue #${issue.number}`);
             }
