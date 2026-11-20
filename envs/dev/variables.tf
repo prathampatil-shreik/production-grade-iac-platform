@@ -135,7 +135,7 @@ variable "db_max_allocated_storage" {
 variable "db_backup_retention_period" {
   description = "RDS backup retention in days"
   type        = number
-  default     = 3
+  default     = 0
 }
 
 variable "db_multi_az" {
