@@ -3,7 +3,7 @@
 # Stage 4 — CD pipeline (deploy on merge to main)
 #
 # Triggered on push to main (i.e. after a PR is merged).
-# Uses OIDC to assume the CD IAM role — no long-lived credentials stored.
+# Uses static AWS credentials stored as GitHub secrets.
 #
 # Jobs:
 #   apply-dev   — terraform apply for envs/dev (automatic after merge)
@@ -11,20 +11,16 @@
 #                 via GitHub Environment protection rules)
 #
 # Required GitHub secrets:
-#   AWS_CD_ROLE_ARN    — ARN of the CD IAM role (output of bootstrap/oidc)
-#   AWS_REGION         — e.g. us-east-1
-#   TF_VAR_DB_PASSWORD — database master password
-#   DEV_BUCKET_SUFFIX  — unique suffix for the dev S3 bucket name
-#   PROD_BUCKET_SUFFIX — unique suffix for the prod S3 bucket name
+#   AWS_ACCESS_KEY_ID     — IAM user access key
+#   AWS_SECRET_ACCESS_KEY — IAM user secret key
+#   AWS_REGION            — e.g. us-east-1
+#   TF_VAR_DB_PASSWORD    — database master password
+#   DEV_BUCKET_SUFFIX     — unique suffix for the dev S3 bucket name
+#   PROD_BUCKET_SUFFIX    — unique suffix for the prod S3 bucket name
 #
 # Required GitHub Environments:
 #   dev   — no protection rules (auto-deploy)
 #   prod  — required reviewers protection rule (manual approval gate)
-#
-# OIDC sub claim note:
-#   When a job specifies `environment:`, GitHub sends:
-#     repo:<org>/<repo>:environment:<env-name>
-#   The CD IAM role trust policy allows both :environment:dev and :environment:prod.
 
 name: CD
 
@@ -36,7 +32,6 @@ on:
       - "envs/**"
 
 permissions:
-  id-token: write
   contents: read
 
 env:
@@ -55,12 +50,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_CD_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-          role-session-name: cd-apply-dev-${{ github.run_id }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -95,12 +90,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_CD_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-          role-session-name: cd-apply-prod-${{ github.run_id }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
