@@ -117,19 +117,19 @@ variable "db_password" {
 variable "db_instance_class" {
   description = "RDS instance class"
   type        = string
-  default     = "db.t3.small"
+  default     = "db.t3.micro"
 }
 
 variable "db_allocated_storage" {
   description = "Initial RDS allocated storage in GiB"
   type        = number
-  default     = 50
+  default     = 20
 }
 
 variable "db_max_allocated_storage" {
   description = "Maximum RDS storage autoscaling limit in GiB"
   type        = number
-  default     = 200
+  default     = 50
 }
 
 variable "db_backup_retention_period" {
