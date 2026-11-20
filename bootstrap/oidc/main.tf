@@ -8,8 +8,6 @@ terraform {
     }
   }
 
-  # Reuse the same S3 backend as the rest of the platform.
-  # Key is separate so this config can be applied independently.
   backend "s3" {
     bucket       = "shreik-iac-platform-tfstate-2026"
     key          = "bootstrap/oidc/terraform.tfstate"
@@ -34,17 +32,10 @@ provider "aws" {
 data "aws_caller_identity" "current" {}
 
 # ── GitHub Actions OIDC Provider ─────────────────────────────────────────────
-# GitHub's OIDC thumbprint is stable; AWS now validates the token via the
-# OIDC discovery document so the thumbprint list is a formality.
 
 resource "aws_iam_openid_connect_provider" "github" {
-  url = "https://token.actions.githubusercontent.com"
-
-  client_id_list = ["sts.amazonaws.com"]
-
-  # Current GitHub Actions OIDC CA thumbprint (SHA-1 of the root cert).
-  # AWS validates the token signature independently; this value is required
-  # by the API but is not the primary trust mechanism.
+  url             = "https://token.actions.githubusercontent.com"
+  client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
 
   tags = {
@@ -54,7 +45,13 @@ resource "aws_iam_openid_connect_provider" "github" {
 
 # ── IAM Role — GitHub Actions CI (plan only) ─────────────────────────────────
 # Assumed by the CI workflow on pull requests.
-# Permissions: read-only + terraform plan (no write actions).
+#
+# Sub claim shapes GitHub sends for CI jobs:
+#   pull_request event : repo:<org>/<repo>:pull_request
+#   job inside env     : repo:<org>/<repo>:environment:<env-name>
+#
+# The CI plan-dev and plan-prod jobs run inside the "dev" and "prod"
+# environments, so we must allow both sub claim forms.
 
 data "aws_iam_policy_document" "github_ci_assume_role" {
   statement {
@@ -72,12 +69,15 @@ data "aws_iam_policy_document" "github_ci_assume_role" {
       values   = ["sts.amazonaws.com"]
     }
 
-    # Restrict to pull_request events on the configured repository.
-    # The sub claim for PRs is: repo:<owner>/<repo>:pull_request
+    # Allow pull_request events AND environment-scoped jobs (plan-dev, plan-prod)
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_org}/${var.github_repo}:pull_request"]
+      values = [
+        "repo:${var.github_org}/${var.github_repo}:pull_request",
+        "repo:${var.github_org}/${var.github_repo}:environment:dev",
+        "repo:${var.github_org}/${var.github_repo}:environment:prod",
+      ]
     }
   }
 }
@@ -98,7 +98,6 @@ resource "aws_iam_role_policy_attachment" "github_ci_readonly" {
   policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
 }
 
-# Additional permissions needed for terraform plan (state read/write lock).
 data "aws_iam_policy_document" "github_ci_state" {
   statement {
     sid    = "StateAccess"
@@ -124,8 +123,14 @@ resource "aws_iam_role_policy" "github_ci_state" {
 
 # ── IAM Role — GitHub Actions CD (apply) ─────────────────────────────────────
 # Assumed by the CD workflow on push to main.
-# Permissions: PowerUserAccess (create/update/delete AWS resources) + IAM
-# for role creation required by the compute module.
+#
+# IMPORTANT: When a job specifies `environment: dev` or `environment: prod`,
+# GitHub replaces the ref-based sub claim with an environment-scoped one:
+#   repo:<org>/<repo>:environment:dev
+#   repo:<org>/<repo>:environment:prod
+#
+# The trust policy MUST list these environment sub claims, not the ref claim.
+# Using StringLike with a wildcard covers both environments in one condition.
 
 data "aws_iam_policy_document" "github_cd_assume_role" {
   statement {
@@ -143,11 +148,15 @@ data "aws_iam_policy_document" "github_cd_assume_role" {
       values   = ["sts.amazonaws.com"]
     }
 
-    # Restrict to push events on the main branch only.
+    # Allow jobs running inside the dev and prod GitHub Environments.
+    # The ref claim is overridden by the environment claim when environment: is set.
     condition {
-      test     = "StringEquals"
+      test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_org}/${var.github_repo}:ref:refs/heads/main"]
+      values = [
+        "repo:${var.github_org}/${var.github_repo}:environment:dev",
+        "repo:${var.github_org}/${var.github_repo}:environment:prod",
+      ]
     }
   }
 }
@@ -168,7 +177,6 @@ resource "aws_iam_role_policy_attachment" "github_cd_power_user" {
   policy_arn = "arn:aws:iam::aws:policy/PowerUserAccess"
 }
 
-# IAM pass-role and limited IAM write needed for ECS task execution role.
 data "aws_iam_policy_document" "github_cd_iam" {
   statement {
     sid    = "IamRoleManagement"
@@ -189,7 +197,6 @@ data "aws_iam_policy_document" "github_cd_iam" {
       "iam:UntagRole",
       "iam:UpdateAssumeRolePolicy",
     ]
-    # Scope to roles created by this platform only.
     resources = [
       "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/iac-platform-*",
     ]

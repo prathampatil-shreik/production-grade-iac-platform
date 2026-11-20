@@ -10,16 +10,21 @@
 #   apply-prod  — terraform apply for envs/prod (requires manual approval
 #                 via GitHub Environment protection rules)
 #
-# Required GitHub secrets (same as CI plus CD role):
+# Required GitHub secrets:
 #   AWS_CD_ROLE_ARN    — ARN of the CD IAM role (output of bootstrap/oidc)
-#   AWS_REGION
-#   TF_VAR_DB_PASSWORD
-#   DEV_BUCKET_SUFFIX
-#   PROD_BUCKET_SUFFIX
+#   AWS_REGION         — e.g. us-east-1
+#   TF_VAR_DB_PASSWORD — database master password
+#   DEV_BUCKET_SUFFIX  — unique suffix for the dev S3 bucket name
+#   PROD_BUCKET_SUFFIX — unique suffix for the prod S3 bucket name
 #
 # Required GitHub Environments:
 #   dev   — no protection rules (auto-deploy)
 #   prod  — required reviewers protection rule (manual approval gate)
+#
+# OIDC sub claim note:
+#   When a job specifies `environment:`, GitHub sends:
+#     repo:<org>/<repo>:environment:<env-name>
+#   The CD IAM role trust policy allows both :environment:dev and :environment:prod.
 
 name: CD
 
@@ -78,13 +83,11 @@ jobs:
         run: terraform apply -input=false -no-color dev.tfplan
 
   # ── Job 2: Apply prod ────────────────────────────────────────────────────────
-  # Blocked by the GitHub Environment "prod" protection rule until a reviewer
-  # approves. The plan is shown in the Actions UI before approval is requested.
   apply-prod:
     name: Apply prod
     runs-on: ubuntu-latest
     needs: apply-dev
-    environment: prod          # <-- manual approval gate configured here
+    environment: prod
     concurrency:
       group: terraform-prod
       cancel-in-progress: false
