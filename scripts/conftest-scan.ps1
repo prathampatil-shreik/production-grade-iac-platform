@@ -52,7 +52,7 @@ if (-not (Get-Command conftest -ErrorAction SilentlyContinue)) {
 Write-Host "  Testing pass_plan.json (expect: PASS)" -NoNewline
 Push-Location $RepoRoot
 try {
-    $out = conftest test "$TestdataDir\pass_plan.json" --policy $PolicyDir --no-color 2>&1
+    $out = conftest test "$TestdataDir\pass_plan.json" --policy $PolicyDir --all-namespaces --no-color 2>&1
     if ($LASTEXITCODE -eq 0) {
         Write-Host " — PASS" -ForegroundColor Green
     } else {
@@ -68,7 +68,7 @@ try {
 Write-Host "  Testing fail_plan.json (expect: violations detected)" -NoNewline
 Push-Location $RepoRoot
 try {
-    $out = conftest test "$TestdataDir\fail_plan.json" --policy $PolicyDir --no-color 2>&1
+    $out = conftest test "$TestdataDir\fail_plan.json" --policy $PolicyDir --all-namespaces --no-color 2>&1
     if ($LASTEXITCODE -ne 0) {
         Write-Host " — PASS (violations correctly detected)" -ForegroundColor Green
         Write-Host "  Violations found:" -ForegroundColor DarkGray
