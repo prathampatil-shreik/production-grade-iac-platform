@@ -137,14 +137,14 @@ jobs:
 
       - name: Conftest — pass_plan fixture (expect 0 violations)
         run: |
-          conftest test policy/terraform/testdata/pass_plan.json \
+          conftest test policy/testdata/pass_plan.json \
             --policy policy/terraform
 
       - name: Conftest — fail_plan fixture (expect violations)
         run: |
           # This must exit non-zero (violations detected). We invert the exit
           # code so the step passes when violations ARE found as expected.
-          conftest test policy/terraform/testdata/fail_plan.json \
+          conftest test policy/testdata/fail_plan.json \
             --policy policy/terraform && exit 1 || exit 0
 
   # ── Job 3: Terraform plan — dev ─────────────────────────────────────────────
